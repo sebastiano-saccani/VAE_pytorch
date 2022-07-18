@@ -23,6 +23,8 @@ print(f"numerical columns: {num_cols}")
 
 cat_cols = list(set(df.columns) - set(num_cols))
 print(f"categorical columns: {cat_cols}")
+
+
 ## Standard Scaler for Numerical Variables
 
 for i in num_cols:
@@ -212,6 +214,5 @@ for epoch in range(num_epochs):
 
 
 # Questions
-# 1. Onehot you mean to do it for categorical variables in general or for each categorical
 # 2. Can we use sklearn?
 # 3. After we defined the model what do we give as input?
