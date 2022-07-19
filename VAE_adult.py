@@ -8,6 +8,8 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 from torch import nn
+from torch.utils.tensorboard import SummaryWriter
+
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
@@ -164,7 +166,7 @@ latent_dim = 10
 vae = VariationalAutoEncoder(latent_dim)
 
 
-optim = torch.optim.SGD(vae.parameters(), lr=1e-3, weight_decay=1e-5) #could try to adjust the learning rate
+optim = torch.optim.SGD(vae.parameters(), lr=1e-4, weight_decay=1e-3) #could try to adjust the learning rate
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 device = torch.device("cpu")
@@ -191,7 +193,7 @@ def train_epoch(vae, device, dataloader, optimizer):
         optimizer.step()
 
         # Print batch loss
-        print('\t partial train loss (single batch): %f' % (loss.item()))
+        # print('\t partial train loss (single batch): %f' % (loss.item()))
         train_loss += loss.item()
 
 
@@ -220,11 +222,15 @@ def test_epoch(vae, device, dataloader):
 
 
 
-num_epochs = 10
+num_epochs = 100
+writer = SummaryWriter(log_dir='output')
 
 for epoch in range(num_epochs):
     train_loss = train_epoch(vae, device, train_loader, optim)
     val_loss = test_epoch(vae,device, validation_loader)
+    writer.add_scalar('Loss/train', train_loss, epoch)
+    writer.add_scalar('Loss/valid', val_loss, epoch)
+    writer.flush()
     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
 
 ## inverse transform of the standard scaler
