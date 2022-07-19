@@ -9,6 +9,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
+from pandas.api.types import is_numeric_dtype
 
 import torch.nn.functional as F
 import torch.optim as optim
@@ -16,6 +17,24 @@ from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 
 
 df = pd.read_csv("adult_d.data", header=None)
+
+col_list = []
+counter = 0
+for col in df.columns:
+    col_dict = {}
+    col_dict['name'] = col
+    if is_numeric_dtype(df[col]):
+        col_dict['type'] = 'numeric'
+        col_dict['index_start'] = counter
+        col_dict['index_stop'] = counter
+        counter += 1
+    else:
+        col_dict['type'] = 'category'
+        col_dict['index_start'] = counter
+        n_categories = len(df[col].drop_duplicates())
+        col_dict['index_stop'] = counter + n_categories
+        counter += n_categories
+    col_list.append(col_dict)
 
 col_names = list(df.columns)
 print(f"all columns: {col_names}")
