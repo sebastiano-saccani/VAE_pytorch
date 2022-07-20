@@ -11,30 +11,14 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from pandas.api.types import is_numeric_dtype
 
+
+
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 
 
 df = pd.read_csv("adult_d.data", header=None)
-
-col_list = []
-counter = 0
-for col in df.columns:
-    col_dict = {}
-    col_dict['name'] = col
-    if is_numeric_dtype(df[col]):
-        col_dict['type'] = 'numeric'
-        col_dict['index_start'] = counter
-        col_dict['index_stop'] = counter
-        counter += 1
-    else:
-        col_dict['type'] = 'category'
-        col_dict['index_start'] = counter
-        n_categories = len(df[col].drop_duplicates())
-        col_dict['index_stop'] = counter + n_categories
-        counter += n_categories
-    col_list.append(col_dict)
 
 col_names = list(df.columns)
 print(f"all columns: {col_names}")
@@ -46,15 +30,43 @@ cat_cols = list(set(df.columns) - set(num_cols))
 print(f"categorical columns: {cat_cols}")
 
 
-## Standard Scaler for Numerical Variables
+col_list = []
+counter = 0
 
-for i in num_cols:
-    x = df.loc[:, i]
-    m = df.loc[:, i].mean()
-    s = df.loc[:, i].std()
-    x -= m
-    x /= s
-    df.loc[:, i] = x
+for col in df.columns:
+    col_dict = {}
+    col_dict['name'] = col
+    if is_numeric_dtype(df[col]):
+        ##standard scaler
+        m = df[col].mean()
+        s = df[col].std()
+
+        col_dict['mean'] = m
+        col_dict['std'] = s
+
+        df[col] -= m
+        df[col] /= s
+
+        ##saving starting and stopping indices
+        col_dict['type'] = 'numeric'
+        col_dict['index_start'] = counter
+        col_dict['index_stop'] = counter
+        counter += 1
+
+    else:
+        col_dict['type'] = 'category'
+        col_dict['index_start'] = counter
+        n_categories = len(df[col].drop_duplicates())
+        col_dict['index_stop'] = counter + n_categories
+        counter += n_categories
+
+
+    col_list.append(col_dict)
+
+
+
+
+
 
 ## One Hot encoding for Categorical Variables
 
@@ -65,7 +77,6 @@ df_cat = df_cat.drop(num_cols, axis=1)
 df_cat = pd.get_dummies(df_cat)
 
 print(df_cat.shape)  # Notice how dimensionality increases a lot
-
 
 # Merging the two datasets together
 
@@ -78,7 +89,8 @@ print(df_final.shape)
 
 ## here we have the final scaled and 'onehotted' dataset which we can use after we define encoder and decoder
 
-##Splitting training and testing datasets
+##Splitting training and validation sets
+
 
 train_split = 0.8
 random_seed = 42
@@ -112,17 +124,10 @@ val_dataset = MyDataset(valid_df)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=False)
 validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
-# train_dataset = torch.utils.data.Subset(df_final, train_indices)
-#
-# train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64,
-#                                            sampler=train_sampler)
-#
-# val_dataset = torch.utils.data.Subset(df_final, val_indices)
-#
-# validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
+
 
 # defining an Encoder and Decoder (just made of fully connected NN layers)
 class Encoder(nn.Module):
@@ -165,7 +170,7 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         #remember to add log thing and softmax
-        # x = F.softmax(self.decoder_lin(x))
+        #x = F.softmax(self.decoder_lin(x))
         return self.decoder_lin(x)
 
 class VariationalAutoEncoder(nn.Module):
@@ -184,15 +189,12 @@ latent_dim = 10
 
 vae = VariationalAutoEncoder(latent_dim)
 
-
-optim = torch.optim.SGD(vae.parameters(), lr=1e-4, weight_decay=1e-3) #could try to adjust the learning rate
+optim = torch.optim.Adam(vae.parameters(), lr=1e-3, weight_decay=1e-5) #could try to adjust the learning rate
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-device = torch.device("cpu")
 print(f'Selected device: {device}')
 
 vae.to(device)
-
 
 def train_epoch(vae, device, dataloader, optimizer):
     # Set train mode for both the encoder and the decoder
@@ -241,7 +243,8 @@ def test_epoch(vae, device, dataloader):
 
 
 
-num_epochs = 100
+num_epochs = 10
+
 writer = SummaryWriter(log_dir='output')
 
 for epoch in range(num_epochs):
@@ -252,13 +255,17 @@ for epoch in range(num_epochs):
     writer.flush()
     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
 
-## inverse transform of the standard scaler
 
-## inverse transform of one hot encoder
+
+
+#TODO: inverse transform of the standard scaler
+#TODO: inverse transform of one hot encoder
+
+
+
 
 
 
 
 # Questions
-# 2. Can we use sklearn?
 # 3. After we defined the model what do we give as input?
