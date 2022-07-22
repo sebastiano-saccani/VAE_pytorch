@@ -266,7 +266,6 @@ with torch.no_grad():
 
         count = 0
         for col in df_hat.columns:
-
             if col_list[count]['index_start'] == col_list[count]['index_stop']:
                 df_hat[count] *= col_list[count]['std']
                 df_hat[count] += col_list[count]['mean']
