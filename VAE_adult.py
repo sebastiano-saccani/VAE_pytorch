@@ -32,14 +32,10 @@ print(f"categorical columns: {cat_cols}")
 
 col_list = []
 counter = 0
-count = 1
+mod_dataset = np.empty([len(df),0], dtype=np.float32)
 for col in df.columns:
     col_dict = {}
     col_dict['name'] = col
-
-    inter = pd.DataFrame()
-    df_col = pd.DataFrame()
-
 
     if is_numeric_dtype(df[col]):
         ##standard scaler
@@ -49,13 +45,15 @@ for col in df.columns:
         col_dict['mean'] = m
         col_dict['std'] = s
 
-        df[col] -= m
-        df[col] /= s
+        tmp = df[col].values.astype(np.float32)
+        tmp -= m
+        tmp /= s
+        mod_dataset = np.concatenate([mod_dataset, tmp[..., np.newaxis]], axis=1)
 
         ##saving starting and stopping indices
         col_dict['type'] = 'numeric'
         col_dict['index_start'] = counter
-        col_dict['index_stop'] = counter
+        col_dict['index_stop'] = counter + 1
         counter += 1
 
 
@@ -69,27 +67,12 @@ for col in df.columns:
 
         ## One Hot encoding for Categorical Variables
 
-        inter[count] = df[col]
-        inter = pd.get_dummies(inter)
-        count += 1
-
-        for column in inter.columns:
-            #print(column)
-            idx = counter
-            idx += 1
-            if column not in df.columns:
-                df.insert(idx, column, inter[column])
-                idx += 1
+        tmp = pd.get_dummies(df[col]).values.astype(np.float32)
+        mod_dataset = np.concatenate([mod_dataset, tmp], axis=1)
 
         counter += n_categories
 
-        inter.drop(inter.index, inplace=True)
-
     col_list.append(col_dict)
-
-for i in cat_cols:
-   df.drop(i, inplace = True, axis = 1)
-   #print(df)
 
 print(df)
 
@@ -102,7 +85,7 @@ print(df)
 train_split = 0.8
 random_seed = 42
 
-dataset_size = len(df)
+dataset_size = len(mod_dataset)
 validation_split = .2
 indices = list(range(dataset_size))
 split = int(np.floor(validation_split * dataset_size))
@@ -111,8 +94,8 @@ train_indices, val_indices = indices[split:], indices[:split]
 # train_sampler = SubsetRandomSampler(train_indices)
 # valid_sampler =  SequentialSampler(val_indices)
 
-train_df = df.iloc[train_indices].reset_index(drop=True)
-valid_df = df.iloc[val_indices].reset_index(drop=True)
+train_df = mod_dataset[train_indices, :]#df.iloc[train_indices].reset_index(drop=True)
+valid_df = mod_dataset[val_indices, :]#df.iloc[val_indices].reset_index(drop=True)
 
 from torch.utils.data import Dataset
 class MyDataset(Dataset):
@@ -123,7 +106,7 @@ class MyDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        return np.asarray(self.df.loc[idx], dtype=np.float32)
+        return self.df[idx]
 
 train_dataset = MyDataset(train_df)
 val_dataset = MyDataset(valid_df)
@@ -132,9 +115,9 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle
 validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# print(f"Using {device} device")
+device = "cpu"
 
 # defining an Encoder and Decoder (just made of fully connected NN layers)
 class Encoder(nn.Module):
@@ -191,6 +174,10 @@ class VariationalAutoEncoder(nn.Module):
         z = self.encoder(x)
         return self.decoder(z)
 
+    def generate(self, batch_size, latent_dim):
+        z = torch.rand([batch_size, latent_dim])
+        return self.decoder(z).detach().numpy()
+
 
 latent_dim = 10
 
@@ -198,8 +185,9 @@ vae = VariationalAutoEncoder(latent_dim)
 
 optim = torch.optim.Adam(vae.parameters(), lr=1e-3, weight_decay=1e-5) #could try to adjust the learning rate
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-print(f'Selected device: {device}')
+# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+# print(f'Selected device: {device}')
+device = "cpu"
 
 vae.to(device)
 
@@ -236,7 +224,7 @@ def test_epoch(vae, device, dataloader):
     val_loss = 0.0
     with torch.no_grad():  # No need to track the gradients
         for x in dataloader:
-            print(x)
+            # print(x)
             # Move tensor to the proper device
             x = x.to(device)
 
@@ -250,43 +238,43 @@ def test_epoch(vae, device, dataloader):
     return val_loss / len(dataloader.dataset)
 
 
-out = pd.DataFrame()
-counter = 0
-with torch.no_grad():
-    for x in validation_loader:
-        #print(x)
-        x = x.to(device)
-
-        x_hat = vae(x)
-
-        x_hat = x_hat.numpy()
-        df_hat = pd.DataFrame(x_hat)
-        print(df_hat)
-        ## now we should transform back every column to their original form
-
-        count = 0
-        for col in df_hat.columns:
-            if col_list[count]['index_start'] == col_list[count]['index_stop']:
-                df_hat[count] *= col_list[count]['std']
-                df_hat[count] += col_list[count]['mean']
-                count += 1
-    
-            else:
-                count += col_list[count]['index_stop'] - col_list[count]['index_start']
-
-
-    #print(df_hat)
-
-
-
-
-print(f'OUTPUT OF THE MODEL: {out}')
-
-
+# out = pd.DataFrame()
+# counter = 0
+# with torch.no_grad():
+#     for x in validation_loader:
+#         #print(x)
+#         x = x.to(device)
+#
+#         x_hat = vae(x)
+#
+#         x_hat = x_hat.numpy()
+#         df_hat = pd.DataFrame(x_hat)
+#         print(df_hat)
+#         ## now we should transform back every column to their original form
+#
+#         count = 0
+#         for col in df_hat.columns:
+#             if col_list[count]['index_start'] == col_list[count]['index_stop']:
+#                 df_hat[count] *= col_list[count]['std']
+#                 df_hat[count] += col_list[count]['mean']
+#                 count += 1
+#
+#             else:
+#                 count += col_list[count]['index_stop'] - col_list[count]['index_start']
+#
+#
+#     #print(df_hat)
+#
+#
+#
+#
+# print(f'OUTPUT OF THE MODEL: {out}')
 
 
 
-num_epochs = 50
+
+
+num_epochs = 10
 
 writer = SummaryWriter(log_dir='output')
 
@@ -298,6 +286,16 @@ for epoch in range(num_epochs):
     writer.flush()
     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
 
+gen_output = vae.generate(128, 10)
+
+df_out = df.loc[1:len(gen_output)].copy()
+for col in col_list:
+    if col['type'] == 'numeric':
+        df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
+
+    else:
+
+print("ciao")
 
 #TODO: inverse transform of the standard scaler
 #TODO: inverse transform of one hot encoder
