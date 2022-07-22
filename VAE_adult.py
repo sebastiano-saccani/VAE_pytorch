@@ -12,14 +12,14 @@ from torch.utils.tensorboard import SummaryWriter
 from pandas.api.types import is_numeric_dtype
 
 
-
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
 
 
 df = pd.read_csv("adult_d.data", header=None)
-
+print(df)
+#print(df)
 col_names = list(df.columns)
 print(f"all columns: {col_names}")
 
@@ -32,10 +32,15 @@ print(f"categorical columns: {cat_cols}")
 
 col_list = []
 counter = 0
-
+count = 1
 for col in df.columns:
     col_dict = {}
     col_dict['name'] = col
+
+    inter = pd.DataFrame()
+    df_col = pd.DataFrame()
+
+
     if is_numeric_dtype(df[col]):
         ##standard scaler
         m = df[col].mean()
@@ -53,39 +58,41 @@ for col in df.columns:
         col_dict['index_stop'] = counter
         counter += 1
 
+
     else:
+        ## inserting all information on indexing
+
         col_dict['type'] = 'category'
         col_dict['index_start'] = counter
         n_categories = len(df[col].drop_duplicates())
         col_dict['index_stop'] = counter + n_categories
+
+        ## One Hot encoding for Categorical Variables
+
+        inter[count] = df[col]
+        inter = pd.get_dummies(inter)
+        count += 1
+
+        for column in inter.columns:
+            #print(column)
+            idx = counter
+            idx += 1
+            if column not in df.columns:
+                df.insert(idx, column, inter[column])
+                idx += 1
+
         counter += n_categories
 
+        inter.drop(inter.index, inplace=True)
 
     col_list.append(col_dict)
 
+for i in cat_cols:
+   df.drop(i, inplace = True, axis = 1)
+   #print(df)
 
+print(df)
 
-
-
-
-## One Hot encoding for Categorical Variables
-
-# We make a dataset of only categorical variables
-df_cat = df
-df_cat = df_cat.drop(num_cols, axis=1)
-
-df_cat = pd.get_dummies(df_cat)
-
-print(df_cat.shape)  # Notice how dimensionality increases a lot
-
-# Merging the two datasets together
-
-df_num = df
-df_num = df_num.drop(cat_cols, axis=1)
-
-df_final = pd.concat([df_num, df_cat], axis=1)
-print(df_final)
-print(df_final.shape)
 
 ## here we have the final scaled and 'onehotted' dataset which we can use after we define encoder and decoder
 
@@ -95,7 +102,7 @@ print(df_final.shape)
 train_split = 0.8
 random_seed = 42
 
-dataset_size = len(df_final)
+dataset_size = len(df)
 validation_split = .2
 indices = list(range(dataset_size))
 split = int(np.floor(validation_split * dataset_size))
@@ -104,8 +111,8 @@ train_indices, val_indices = indices[split:], indices[:split]
 # train_sampler = SubsetRandomSampler(train_indices)
 # valid_sampler =  SequentialSampler(val_indices)
 
-train_df = df_final.iloc[train_indices].reset_index(drop=True)
-valid_df = df_final.iloc[val_indices].reset_index(drop=True)
+train_df = df.iloc[train_indices].reset_index(drop=True)
+valid_df = df.iloc[val_indices].reset_index(drop=True)
 
 from torch.utils.data import Dataset
 class MyDataset(Dataset):
@@ -229,6 +236,7 @@ def test_epoch(vae, device, dataloader):
     val_loss = 0.0
     with torch.no_grad():  # No need to track the gradients
         for x in dataloader:
+            print(x)
             # Move tensor to the proper device
             x = x.to(device)
 
@@ -242,8 +250,44 @@ def test_epoch(vae, device, dataloader):
     return val_loss / len(dataloader.dataset)
 
 
+out = pd.DataFrame()
+counter = 0
+with torch.no_grad():
+    for x in validation_loader:
+        #print(x)
+        x = x.to(device)
 
-num_epochs = 10
+        x_hat = vae(x)
+
+        x_hat = x_hat.numpy()
+        df_hat = pd.DataFrame(x_hat)
+        print(df_hat)
+        ## now we should transform back every column to their original form
+
+        count = 0
+        for col in df_hat.columns:
+
+            if col_list[count]['index_start'] == col_list[count]['index_stop']:
+                df_hat[count] *= col_list[count]['std']
+                df_hat[count] += col_list[count]['mean']
+                count += 1
+    
+            else:
+                count += col_list[count]['index_stop'] - col_list[count]['index_start']
+
+
+    #print(df_hat)
+
+
+
+
+print(f'OUTPUT OF THE MODEL: {out}')
+
+
+
+
+
+num_epochs = 50
 
 writer = SummaryWriter(log_dir='output')
 
@@ -254,8 +298,6 @@ for epoch in range(num_epochs):
     writer.add_scalar('Loss/valid', val_loss, epoch)
     writer.flush()
     print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
-
-
 
 
 #TODO: inverse transform of the standard scaler
