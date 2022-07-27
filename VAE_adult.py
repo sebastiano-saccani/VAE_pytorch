@@ -65,7 +65,13 @@ for col in df.columns:
         n_categories = len(df[col].drop_duplicates())
         col_dict['index_stop'] = counter + n_categories
 
-        ## One Hot encoding for Categorical Variables
+        col_dict['category_names'] = []
+        for i in range(len(df[col])):
+            if df[col][i] not in col_dict['category_names']:
+                col_dict['category_names'].append(df[col][i])
+
+
+                      ## One Hot encoding for Categorical Variables
 
         tmp = pd.get_dummies(df[col]).values.astype(np.float32)
         mod_dataset = np.concatenate([mod_dataset, tmp], axis=1)
@@ -75,6 +81,7 @@ for col in df.columns:
     col_list.append(col_dict)
 
 print(df)
+
 
 
 ## here we have the final scaled and 'onehotted' dataset which we can use after we define encoder and decoder
@@ -284,18 +291,54 @@ for epoch in range(num_epochs):
     writer.add_scalar('Loss/train', train_loss, epoch)
     writer.add_scalar('Loss/valid', val_loss, epoch)
     writer.flush()
-    print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
+    #print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
+
+
 
 gen_output = vae.generate(128, 10)
 
-df_out = df.loc[1:len(gen_output)].copy()
+df_out = df.loc[0:len(gen_output) - 1].copy()
+g = pd.DataFrame(gen_output)
+
+print(df_out)
+
 for col in col_list:
+    print(col['name'])
     if col['type'] == 'numeric':
         df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
 
-    else:
 
-print("ciao")
+    else:
+        for j in range(127):
+            for i in range(col['index_start'], col['index_stop']):
+                if g.loc[j, i] == g.loc[j, col['index_start']: col['index_stop']-1].max():
+                    g.loc[j, i] = 1.0
+
+                else:
+                    g.loc[j, i] = 0.0
+
+
+        c = 0
+        df_out.loc[:, col['name']] = None
+        for j in range(127):
+            for i in range(col['index_start'], col['index_stop']):
+                if g.loc[j, i] == 1.0:
+                    m = i - col['index_start']
+                    df_out.loc[j, col['name']] = col['category_names'][m]
+                    '''''
+                    if col['category_names'][c] not in df_out.loc[:, col['name']]:
+                        c += 1
+                    '''''
+
+
+print(df_out)
+print(c)
+
+
+print(g)
+
+print(df_out)
+
 
 #TODO: inverse transform of the standard scaler
 #TODO: inverse transform of one hot encoder
