@@ -245,42 +245,6 @@ def test_epoch(vae, device, dataloader):
     return val_loss / len(dataloader.dataset)
 
 
-# out = pd.DataFrame()
-# counter = 0
-# with torch.no_grad():
-#     for x in validation_loader:
-#         #print(x)
-#         x = x.to(device)
-#
-#         x_hat = vae(x)
-#
-#         x_hat = x_hat.numpy()
-#         df_hat = pd.DataFrame(x_hat)
-#         print(df_hat)
-#         ## now we should transform back every column to their original form
-#
-#         count = 0
-#         for col in df_hat.columns:
-#             if col_list[count]['index_start'] == col_list[count]['index_stop']:
-#                 df_hat[count] *= col_list[count]['std']
-#                 df_hat[count] += col_list[count]['mean']
-#                 count += 1
-#
-#             else:
-#                 count += col_list[count]['index_stop'] - col_list[count]['index_start']
-#
-#
-#     #print(df_hat)
-#
-#
-#
-#
-# print(f'OUTPUT OF THE MODEL: {out}')
-
-
-
-
-
 num_epochs = 10
 
 writer = SummaryWriter(log_dir='output')
@@ -325,29 +289,11 @@ for col in col_list:
                 if g.loc[j, i] == 1.0:
                     m = i - col['index_start']
                     df_out.loc[j, col['name']] = col['category_names'][m]
-                    '''''
-                    if col['category_names'][c] not in df_out.loc[:, col['name']]:
-                        c += 1
-                    '''''
+                    
 
-
-print(df_out)
-print(c)
 
 
 print(g)
 
 print(df_out)
 
-
-#TODO: inverse transform of the standard scaler
-#TODO: inverse transform of one hot encoder
-
-
-
-
-
-
-
-# Questions
-# 3. After we defined the model what do we give as input?
