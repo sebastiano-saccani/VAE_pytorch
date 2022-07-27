@@ -65,15 +65,16 @@ for col in df.columns:
         n_categories = len(df[col].drop_duplicates())
         col_dict['index_stop'] = counter + n_categories
 
-        col_dict['category_names'] = []
-        for i in range(len(df[col])):
-            if df[col][i] not in col_dict['category_names']:
-                col_dict['category_names'].append(df[col][i])
+        # col_dict['category_names'] = []
+        # for i in range(len(df[col])):
+        #     if df[col][i] not in col_dict['category_names']:
+        #         col_dict['category_names'].append(df[col][i])
 
 
-                      ## One Hot encoding for Categorical Variables
-
-        tmp = pd.get_dummies(df[col]).values.astype(np.float32)
+        ## One Hot encoding for Categorical Variables
+        tmp = pd.get_dummies(df[col])
+        col_dict['category_names'] = list(tmp.columns)
+        tmp = tmp.values.astype(np.float32)
         mod_dataset = np.concatenate([mod_dataset, tmp], axis=1)
 
         counter += n_categories
@@ -207,7 +208,7 @@ def train_epoch(vae, device, dataloader, optimizer):
         x_new = vae(x)
 
         ## LOSS
-
+        # TODO: usare RMSE per le variabili numeriche e categorical cross entropy (torch.nn.CrossEntropyLoss) per varibili categoriche (dovrai usare index_start e index_stop)
         loss = ((x - x_new) ** 2).sum() + vae.encoder.kl
 
         # Backward pass
@@ -270,30 +271,13 @@ for col in col_list:
     print(col['name'])
     if col['type'] == 'numeric':
         df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
-
-
     else:
-        for j in range(127):
-            for i in range(col['index_start'], col['index_stop']):
-                if g.loc[j, i] == g.loc[j, col['index_start']: col['index_stop']-1].max():
-                    g.loc[j, i] = 1.0
+        idx_max = np.argmax(gen_output[:, col['index_start']:col['index_stop']], axis=1)
+        # TODO: provare a usare la funzione numpy.random.choiche per scegliere la colonna interpretando il valore di gen_output come log_probability
+        df_out[col['name']] = [col['category_names'][i] for i in idx_max]
 
-                else:
-                    g.loc[j, i] = 0.0
-
-
-        c = 0
-        df_out.loc[:, col['name']] = None
-        for j in range(127):
-            for i in range(col['index_start'], col['index_stop']):
-                if g.loc[j, i] == 1.0:
-                    m = i - col['index_start']
-                    df_out.loc[j, col['name']] = col['category_names'][m]
+# TODO: provare a fare plot con matplotlib delle distribuzioni marginali (istogrammi) e di quelle bivariate (heatmap)
+# TODO: provare a ottimizzare i meta-parametri della rete (dimensione latente, numero e dimensione dei layer di encoder e decoder)
                     
-
-
-
-print(g)
-
 print(df_out)
 
