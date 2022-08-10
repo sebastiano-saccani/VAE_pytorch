@@ -4,6 +4,7 @@ from numpy import asarray
 import pandas as pd
 import random
 import torch
+import os
 import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
@@ -12,22 +13,17 @@ from torch.utils.tensorboard import SummaryWriter
 from pandas.api.types import is_numeric_dtype
 
 
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data.sampler import SubsetRandomSampler, SequentialSampler
-
-
 df = pd.read_csv("adult_d.data", header=None)
-print(df)
+print(f'Initial dataset:\n {df}')
 #print(df)
 col_names = list(df.columns)
-print(f"all columns: {col_names}")
+#print(f"all columns: {col_names}")
 
 num_cols = list(df._get_numeric_data().columns)
-print(f"numerical columns: {num_cols}")
+#print(f"numerical columns: {num_cols}")
 
 cat_cols = list(set(df.columns) - set(num_cols))
-print(f"categorical columns: {cat_cols}")
+#print(f"categorical columns: {cat_cols}")
 
 
 col_list = []
@@ -65,11 +61,6 @@ for col in df.columns:
         n_categories = len(df[col].drop_duplicates())
         col_dict['index_stop'] = counter + n_categories
 
-        # col_dict['category_names'] = []
-        # for i in range(len(df[col])):
-        #     if df[col][i] not in col_dict['category_names']:
-        #         col_dict['category_names'].append(df[col][i])
-
 
         ## One Hot encoding for Categorical Variables
         tmp = pd.get_dummies(df[col])
@@ -81,7 +72,7 @@ for col in df.columns:
 
     col_list.append(col_dict)
 
-print(df)
+print(f'Normalized and One Hotted initial dataset:\n {df}')
 
 
 
@@ -183,8 +174,16 @@ class VariationalAutoEncoder(nn.Module):
         return self.decoder(z)
 
     def generate(self, batch_size, latent_dim):
-        z = torch.rand([batch_size, latent_dim])
-        return self.decoder(z).detach().numpy()
+        l = []
+        for i in range(3):
+            o = torch.rand([batch_size, latent_dim])
+            o = self.decoder(o).detach().numpy()
+            l.append(o)
+        t = tuple(l)
+
+        out = np.concatenate(t, axis=0)
+
+        return out
 
 
 latent_dim = 10
@@ -199,16 +198,24 @@ device = "cpu"
 
 vae.to(device)
 
+###### HyperParameter Tuning
+
+###### HyperParameter Tuning
+
+
+## Training Part
 def train_epoch(vae, device, dataloader, optimizer):
     # Set train mode for both the encoder and the decoder
     vae.train()
     train_loss = 0.0
-    for x in dataloader:
+    for x in dataloader: #for every line in the training/testing dataset
         x = x.to(device)
         x_new = vae(x)
 
         ## LOSS
+
         # TODO: usare RMSE per le variabili numeriche e categorical cross entropy (torch.nn.CrossEntropyLoss) per varibili categoriche (dovrai usare index_start e index_stop)
+
         loss = ((x - x_new) ** 2).sum() + vae.encoder.kl
 
         # Backward pass
@@ -224,16 +231,16 @@ def train_epoch(vae, device, dataloader, optimizer):
     return train_loss / len(dataloader.dataset)
 
 
-### Testing
-
+## Testing Part
 def test_epoch(vae, device, dataloader):
     # Set evaluation mode for encoder and decoder
     vae.eval()
     val_loss = 0.0
     with torch.no_grad():  # No need to track the gradients
-        for x in dataloader:
+        for x in dataloader:  #for every line in the training/testing dataset
             # print(x)
             # Move tensor to the proper device
+
             x = x.to(device)
 
             # Encode data
@@ -260,15 +267,14 @@ for epoch in range(num_epochs):
 
 
 
-gen_output = vae.generate(128, 10)
+gen_output = vae.generate(10000, 10)
 
 df_out = df.loc[0:len(gen_output) - 1].copy()
-g = pd.DataFrame(gen_output)
 
-print(df_out)
+print(f'"de-Normalized" and "de-One Hotted" reconstructed dataset:\n {df_out}')
 
 for col in col_list:
-    print(col['name'])
+    #print(col['name'])
     if col['type'] == 'numeric':
         df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
     else:
@@ -276,8 +282,47 @@ for col in col_list:
         # TODO: provare a usare la funzione numpy.random.choiche per scegliere la colonna interpretando il valore di gen_output come log_probability
         df_out[col['name']] = [col['category_names'][i] for i in idx_max]
 
+
+
 # TODO: provare a fare plot con matplotlib delle distribuzioni marginali (istogrammi) e di quelle bivariate (heatmap)
+
+## Marginal Distrbutions
+for i in cat_cols:
+    nams = df[i].value_counts().keys()
+    df_vals = list(df[i].value_counts())
+    df_out_vals = list(df_out[i].value_counts())
+    while len(df_out_vals) != len(df_vals):
+        df_out_vals.append(0)
+
+    #print(len(df_out_vals), len(df_vals))
+
+    x_axis = np.arange(len(nams))
+
+    plt.bar(x_axis -0.2, df_vals, width=0.4, label = 'initial data')
+    plt.bar(x_axis +0.2, df_out_vals, width=0.4, label = 'generated data')
+
+    plt.xticks(x_axis, nams)
+    plt.legend()
+
+    #plt.show()
+
+## Bivariate Distributions
+
+import seaborn as sns
+
+for i in num_cols:
+    print(i)
+    f = pd.DataFrame()
+    f["original data"] = df[i]
+    f["generated data"] = df_out[i]
+
+    #print(f)
+    sns.jointplot(x=f["original data"], y=f["generated data"], kind='hex', color='m', edgecolor="skyblue")
+
+
 # TODO: provare a ottimizzare i meta-parametri della rete (dimensione latente, numero e dimensione dei layer di encoder e decoder)
-                    
+
+
+
 print(df_out)
 
