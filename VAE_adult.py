@@ -159,7 +159,6 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         #remember to add log thing and softmax
-        #x = F.softmax(self.decoder_lin(x))
         return self.decoder_lin(x)
 
 class VariationalAutoEncoder(nn.Module):
@@ -216,7 +215,17 @@ def train_epoch(vae, device, dataloader, optimizer):
 
         # TODO: usare RMSE per le variabili numeriche e categorical cross entropy (torch.nn.CrossEntropyLoss) per varibili categoriche (dovrai usare index_start e index_stop)
 
-        loss = ((x - x_new) ** 2).sum() + vae.encoder.kl
+        loss = 0
+        for col in col_list:
+            if col['type'] == 'numeric':
+                loss += ((x[:, col['index_start']:col['index_stop']] - x_new[:, col['index_start']:col['index_stop']]) ** 2).sum() + vae.encoder.kl
+            else:
+                l = nn.CrossEntropyLoss()
+                input = x[:, col['index_start']:col['index_stop']]
+                output = x_new[:, col['index_start']:col['index_stop']].softmax(dim=1)
+                loss += l(input, output)
+
+        #loss = ((x - x_new) ** 2).sum() + vae.encoder.kl
 
         # Backward pass
         optimizer.zero_grad()
@@ -247,7 +256,19 @@ def test_epoch(vae, device, dataloader):
             encoded_data = vae.encoder(x)
             # Decode data
             x_hat = vae(x)
-            loss = ((x - x_hat) ** 2).sum() + vae.encoder.kl
+
+            loss = 0
+            for col in col_list:
+                if col['type'] == 'numeric':
+                    loss += ((x[:, col['index_start']:col['index_stop']] - x_hat[:, col['index_start']:col[
+                        'index_stop']]) ** 2).sum() + vae.encoder.kl
+                else:
+                    l = nn.CrossEntropyLoss()
+                    input = x[:, col['index_start']:col['index_stop']]
+                    output = x_hat[:, col['index_start']:col['index_stop']].softmax(dim=1)
+                    loss += l(input, output)
+
+            #loss = ((x - x_hat) ** 2).sum() + vae.encoder.kl
             val_loss += loss.item()
 
     return val_loss / len(dataloader.dataset)
@@ -273,15 +294,25 @@ df_out = df.loc[0:len(gen_output) - 1].copy()
 
 print(f'"de-Normalized" and "de-One Hotted" reconstructed dataset:\n {df_out}')
 
+##prova per annalisa
+
 for col in col_list:
     #print(col['name'])
     if col['type'] == 'numeric':
         df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
     else:
-        idx_max = np.argmax(gen_output[:, col['index_start']:col['index_stop']], axis=1)
-        # TODO: provare a usare la funzione numpy.random.choiche per scegliere la colonna interpretando il valore di gen_output come log_probability
-        df_out[col['name']] = [col['category_names'][i] for i in idx_max]
+        idx_max = np.argmax(gen_output[:, col['index_start']:col['index_stop']], axis=1) #change this line basically
+        #interpreta gli output come log_prob e praticamente scegli non il massimo ma quello che ha la probabilità più alta,
+        # così che la scelta viene ad ogni elemento fatta omogeneamente
 
+
+
+        # TODO: provare a usare la funzione numpy.random.choiche per scegliere la colonna interpretando il valore di gen_output come log_probability
+        #Teoricamente andrebbe usato questo solo che al momento le probabilità sono negative, il che non può essere...
+        weights = torch.tensor(gen_output[:, col['index_start']:col['index_stop']])
+        torch.multinomial(weights, num_samples=len(gen_output[0]), replacement=True)
+
+        df_out[col['name']] = [col['category_names'][i] for i in idx_max]
 
 
 # TODO: provare a fare plot con matplotlib delle distribuzioni marginali (istogrammi) e di quelle bivariate (heatmap)
@@ -304,7 +335,7 @@ for i in cat_cols:
     plt.xticks(x_axis, nams)
     plt.legend()
 
-    #plt.show()
+    plt.show()
 
 ## Bivariate Distributions
 
