@@ -271,6 +271,7 @@ def test_epoch(vae, device, dataloader):
             #loss = ((x - x_hat) ** 2).sum() + vae.encoder.kl
             loss += vae.encoder.kl
             val_loss += loss.item()
+            #c
 
     return val_loss / len(dataloader.dataset)
 
