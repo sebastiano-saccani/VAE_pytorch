@@ -218,13 +218,13 @@ def train_epoch(vae, device, dataloader, optimizer):
         loss = 0
         for col in col_list:
             if col['type'] == 'numeric':
-                loss += ((x[:, col['index_start']:col['index_stop']] - x_new[:, col['index_start']:col['index_stop']]) ** 2).sum() + vae.encoder.kl
+                loss += ((x[:, col['index_start']:col['index_stop']] - x_new[:, col['index_start']:col['index_stop']]) ** 2).sum()
             else:
                 l = nn.CrossEntropyLoss()
                 input = x[:, col['index_start']:col['index_stop']]
                 output = x_new[:, col['index_start']:col['index_stop']].softmax(dim=1)
                 loss += l(input, output)
-
+        loss += vae.encoder.kl
         #loss = ((x - x_new) ** 2).sum() + vae.encoder.kl
 
         # Backward pass
@@ -261,7 +261,7 @@ def test_epoch(vae, device, dataloader):
             for col in col_list:
                 if col['type'] == 'numeric':
                     loss += ((x[:, col['index_start']:col['index_stop']] - x_hat[:, col['index_start']:col[
-                        'index_stop']]) ** 2).sum() + vae.encoder.kl
+                        'index_stop']]) ** 2).sum()
                 else:
                     l = nn.CrossEntropyLoss()
                     input = x[:, col['index_start']:col['index_stop']]
@@ -269,6 +269,7 @@ def test_epoch(vae, device, dataloader):
                     loss += l(input, output)
 
             #loss = ((x - x_hat) ** 2).sum() + vae.encoder.kl
+            loss += vae.encoder.kl
             val_loss += loss.item()
 
     return val_loss / len(dataloader.dataset)
@@ -293,8 +294,6 @@ gen_output = vae.generate(10000, 10)
 df_out = df.loc[0:len(gen_output) - 1].copy()
 
 print(f'"de-Normalized" and "de-One Hotted" reconstructed dataset:\n {df_out}')
-
-##prova per annalisa
 
 for col in col_list:
     #print(col['name'])
