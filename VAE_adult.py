@@ -207,20 +207,18 @@ def train_epoch(vae, device, dataloader, optimizer):
     # Set train mode for both the encoder and the decoder
     vae.train()
     train_loss = 0.0
+    l = nn.CrossEntropyLoss()
     for x in dataloader: #for every line in the training/testing dataset
         x = x.to(device)
         x_new = vae(x)
 
         ## LOSS
 
-        # TODO: usare RMSE per le variabili numeriche e categorical cross entropy (torch.nn.CrossEntropyLoss) per varibili categoriche (dovrai usare index_start e index_stop)
-
         loss = 0
         for col in col_list:
             if col['type'] == 'numeric':
                 loss += ((x[:, col['index_start']:col['index_stop']] - x_new[:, col['index_start']:col['index_stop']]) ** 2).sum()
             else:
-                l = nn.CrossEntropyLoss()
                 input = x[:, col['index_start']:col['index_stop']]
                 output = x_new[:, col['index_start']:col['index_stop']].softmax(dim=1)
                 loss += l(input, output)
@@ -245,6 +243,7 @@ def test_epoch(vae, device, dataloader):
     # Set evaluation mode for encoder and decoder
     vae.eval()
     val_loss = 0.0
+    l = nn.CrossEntropyLoss()
     with torch.no_grad():  # No need to track the gradients
         for x in dataloader:  #for every line in the training/testing dataset
             # print(x)
@@ -263,7 +262,6 @@ def test_epoch(vae, device, dataloader):
                     loss += ((x[:, col['index_start']:col['index_stop']] - x_hat[:, col['index_start']:col[
                         'index_stop']]) ** 2).sum()
                 else:
-                    l = nn.CrossEntropyLoss()
                     input = x[:, col['index_start']:col['index_stop']]
                     output = x_hat[:, col['index_start']:col['index_stop']].softmax(dim=1)
                     loss += l(input, output)
@@ -286,7 +284,7 @@ for epoch in range(num_epochs):
     writer.add_scalar('Loss/train', train_loss, epoch)
     writer.add_scalar('Loss/valid', val_loss, epoch)
     writer.flush()
-    #print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs,train_loss,val_loss))
+    print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs, train_loss, val_loss))
 
 
 
@@ -301,21 +299,10 @@ for col in col_list:
     if col['type'] == 'numeric':
         df_out[col['name']] = gen_output[:, col['index_start']:col['index_stop']] * col['std'] + col['mean']
     else:
-        idx_max = np.argmax(gen_output[:, col['index_start']:col['index_stop']], axis=1) #change this line basically
-        #interpreta gli output come log_prob e praticamente scegli non il massimo ma quello che ha la probabilità più alta,
-        # così che la scelta viene ad ogni elemento fatta omogeneamente
-
-
-
-        # TODO: provare a usare la funzione numpy.random.choiche per scegliere la colonna interpretando il valore di gen_output come log_probability
-        #Teoricamente andrebbe usato questo solo che al momento le probabilità sono negative, il che non può essere...
         weights = torch.tensor(gen_output[:, col['index_start']:col['index_stop']])
-        torch.multinomial(weights, num_samples=len(gen_output[0]), replacement=True)
+        idx_max = torch.multinomial(torch.exp(weights), num_samples=1, replacement=True)
 
         df_out[col['name']] = [col['category_names'][i] for i in idx_max]
-
-
-# TODO: provare a fare plot con matplotlib delle distribuzioni marginali (istogrammi) e di quelle bivariate (heatmap)
 
 ## Marginal Distrbutions
 for i in cat_cols:
